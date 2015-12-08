@@ -25,6 +25,10 @@ ifeq ($(strip $(WIFI_POWER_TUNED)),true)
 ccflags-y += -DWIFI_POWER_TUNED
 endif
 
+ifeq ($(strip $(WIFI_MAC_FROM_NV)),true)
+ccflags-y += -DWIFI_MAC_FROM_NV
+endif
+
 ccflags-y += -DWIFI_DRIVER_IFACE_NAME=\"$(WIFI_DRIVER_IFACE_NAME)\"
 ccflags-y += -DWIFI_DRIVER_MODULE_PATH=\"$(WIFI_DRIVER_MODULE_PATH)\"
 ccflags-y += -DWIFI_DRIVER_MODULE_NAME=\"$(WIFI_DRIVER_MODULE_NAME)\"
