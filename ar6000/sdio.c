@@ -548,7 +548,7 @@ static int ath6kl_sdio_write_async(struct ath6kl *ar, u32 address, u8 *buffer,
 
 	bus_req = ath6kl_sdio_alloc_busreq(ar_sdio);
 
-	if (!bus_req)
+	if (WARN_ON_ONCE(!bus_req))
 		return -ENOMEM;
 
 	bus_req->address = address;
@@ -803,6 +803,7 @@ out:
 	return ret;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34))
 static int ath6kl_set_sdio_pm_caps(struct ath6kl *ar)
 {
 	struct ath6kl_sdio *ar_sdio = ath6kl_sdio_priv(ar);
@@ -832,7 +833,6 @@ static int ath6kl_set_sdio_pm_caps(struct ath6kl *ar)
 	return ret;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34))
 static int ath6kl_sdio_suspend(struct ath6kl *ar, struct cfg80211_wowlan *wow)
 {
 	struct ath6kl_sdio *ar_sdio = ath6kl_sdio_priv(ar);
@@ -840,6 +840,8 @@ static int ath6kl_sdio_suspend(struct ath6kl *ar, struct cfg80211_wowlan *wow)
 	mmc_pm_flag_t flags;
 	bool try_deepsleep = false;
 	int ret;
+	struct ath6kl_vif *vif;
+	int no_if_up;
 
 	if (ar->suspend_mode == WLAN_POWER_STATE_WOW ||
 	    (!ar->suspend_mode && wow)) {
@@ -848,11 +850,24 @@ static int ath6kl_sdio_suspend(struct ath6kl *ar, struct cfg80211_wowlan *wow)
 		if (ret)
 			goto cut_pwr;
 
-		ret = ath6kl_cfg80211_suspend(ar, ATH6KL_CFG_SUSPEND_WOW, wow);
+		// check to see if any interfaces are up
+		// if not, then we can skip WOW
+		no_if_up = 1;
+		spin_lock_bh(&ar->list_lock);
+		list_for_each_entry(vif, &ar->vif_list, list)
+			if (vif->ndev->flags & IFF_UP) no_if_up = 0;
+		spin_unlock_bh(&ar->list_lock);
+
+		if (no_if_up) {
+			ret = -ENOTCONN;
+		} else {
+			ret = ath6kl_cfg80211_suspend(ar, ATH6KL_CFG_SUSPEND_WOW, wow);
+		}
 		if (ret && ret != -ENOTCONN)
 			ath6kl_err("wow suspend failed: %d\n", ret);
 
-		if (ret && (!ar->wow_suspend_mode ||
+		if (ret &&
+		    (!ar->wow_suspend_mode ||
 		    ar->wow_suspend_mode == WLAN_POWER_STATE_DEEP_SLEEP))
 				try_deepsleep = true;
 		else if (ret &&
@@ -934,6 +949,16 @@ static int ath6kl_sdio_resume(struct ath6kl *ar)
 
 	ath6kl_cfg80211_resume(ar);
 
+	return 0;
+}
+#else
+static int ath6kl_sdio_suspend(struct ath6kl *ar, struct cfg80211_wowlan *wow)
+{
+	return 0;
+}
+
+static int ath6kl_sdio_resume(struct ath6kl *ar)
+{
 	return 0;
 }
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34)) */
@@ -1238,10 +1263,8 @@ static const struct ath6kl_hif_ops ath6kl_sdio_ops = {
 	.enable_scatter = ath6kl_sdio_enable_scatter,
 	.scat_req_rw = ath6kl_sdio_async_rw_scatter,
 	.cleanup_scatter = ath6kl_sdio_cleanup_scatter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34))
 	.suspend = ath6kl_sdio_suspend,
 	.resume = ath6kl_sdio_resume,
-#endif
 	.diag_read32 = ath6kl_sdio_diag_read32,
 	.diag_write32 = ath6kl_sdio_diag_write32,
 	.bmi_read = ath6kl_sdio_bmi_read,
@@ -1347,7 +1370,7 @@ static int ath6kl_sdio_probe(struct sdio_func *func,
 		goto err_core_alloc;
 	}
 
-	ret = ath6kl_core_init(ar);
+	ret = ath6kl_core_init(ar, ATH6KL_HTC_TYPE_MBOX);
 	if (ret) {
 		ath6kl_err("Failed to init ath6kl core\n");
 		goto err_core_alloc;

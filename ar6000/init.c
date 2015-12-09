@@ -26,6 +26,7 @@
 #include "target.h"
 #include "debug.h"
 #include "hif-ops.h"
+#include "htc-ops.h"
 #include "regd.h"
 #include "pm.h"
 /*
@@ -189,8 +190,8 @@ struct sk_buff *ath6kl_buf_alloc(int size)
 	u16 reserved;
 
 	/* Add chacheline space at front and back of buffer */
-	reserved = (2 * L1_CACHE_BYTES) + ATH6KL_DATA_OFFSET +
-		   sizeof(struct htc_packet) + ATH6KL_HTC_ALIGN_BYTES;
+	reserved = roundup((2 * L1_CACHE_BYTES) + ATH6KL_DATA_OFFSET +
+		   sizeof(struct htc_packet) + ATH6KL_HTC_ALIGN_BYTES, 4);
 	skb = dev_alloc_skb(size + reserved);
 
 	if (skb)
@@ -295,6 +296,7 @@ static int ath6kl_init_service_ep(struct ath6kl *ar)
 	memset(&connect, 0, sizeof(connect));
 
 	/* these fields are the same for all service endpoints */
+	connect.ep_cb.tx_comp_multi = ath6kl_tx_complete;
 	connect.ep_cb.rx = ath6kl_rx;
 	connect.ep_cb.rx_refill = ath6kl_rx_refill;
 	connect.ep_cb.tx_full = ath6kl_tx_queue_full;
@@ -1841,17 +1843,19 @@ static int __ath6kl_init_hw_start(struct ath6kl *ar)
 	 * size.
 	 */
 	if (ath6kl_htc_wait_target(ar->htc_target)) {
+		ath6kl_err("htc wait target failed: %d\n", ret);
 		ret = -EIO;
 		goto err_power_off;
 	}
 
 	if (ath6kl_init_service_ep(ar)) {
+		ath6kl_err("Endpoint service initilisation failed: %d\n", ret);
 		ret = -EIO;
 		goto err_cleanup_scatter;
 	}
 
 	/* setup credit distribution */
-	ath6kl_credit_setup(ar->htc_target, &ar->credit_state_info);
+	ath6kl_htc_credit_setup(ar->htc_target, &ar->credit_state_info);
 
 	/* start HTC */
 	ret = ath6kl_htc_start(ar->htc_target);
@@ -1959,7 +1963,7 @@ int ath6kl_init_hw_stop(struct ath6kl *ar)
 	return 0;
 }
 
-int ath6kl_core_init(struct ath6kl *ar)
+int ath6kl_core_init(struct ath6kl *ar, enum ath6kl_htc_type htc_type)
 {
 	struct ath6kl_bmi_target_info targ_info;
 	struct net_device *ndev;
@@ -1967,6 +1971,19 @@ int ath6kl_core_init(struct ath6kl *ar)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,0))
 	struct net_device *ndev_p2p0;
 #endif
+
+	switch (htc_type) {
+	case ATH6KL_HTC_TYPE_MBOX:
+		ath6kl_htc_mbox_attach(ar);
+		break;
+	case ATH6KL_HTC_TYPE_PIPE:
+		ath6kl_htc_pipe_attach(ar);
+		break;
+	default:
+		WARN_ON(1);
+		return -ENOMEM;
+	}
+
 	ar->ath6kl_wq = create_singlethread_workqueue("ath6kl");
 	if (!ar->ath6kl_wq)
 		return -ENOMEM;

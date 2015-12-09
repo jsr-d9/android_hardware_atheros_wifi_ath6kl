@@ -1,9 +1,26 @@
 #ar6000
 obj-m += ar6000.o
 
-ar6000-y += debug.o debugfs_pri.o hif.o htc.o bmi.o cfg80211.o
-ar6000-y += cfg80211_btcoex.o pm.o init.o main.o txrx.o wmi.o wmi_btcoex.o
-ar6000-y += sdio.o platform.o softmac.o wmiconfig.o regd.o testmode.o
+ar6000-y += debug.o
+ar6000-y += debugfs_pri.o
+ar6000-y += hif.o
+ar6000-y += htc_mbox.o
+ar6000-y += htc_pipe.o
+ar6000-y += bmi.o
+ar6000-y += cfg80211.o
+ar6000-y += cfg80211_btcoex.o
+ar6000-y += pm.o
+ar6000-y += init.o
+ar6000-y += main.o
+ar6000-y += txrx.o
+ar6000-y += wmi.o
+ar6000-y += wmi_btcoex.o
+ar6000-y += sdio.o
+ar6000-y += platform.o
+ar6000-y += softmac.o
+ar6000-y += wmiconfig.o
+ar6000-y += regd.o
+ar6000-y += testmode.o
 ar6000-y += recovery.o
 
 ccflags-y += -D__CHECK_ENDIAN__
