@@ -189,8 +189,8 @@ struct sk_buff *ath6kl_buf_alloc(int size)
 	u16 reserved;
 
 	/* Add chacheline space at front and back of buffer */
-	reserved = (2 * L1_CACHE_BYTES) + ATH6KL_DATA_OFFSET +
-		   sizeof(struct htc_packet) + ATH6KL_HTC_ALIGN_BYTES;
+	reserved = roundup((2 * L1_CACHE_BYTES) + ATH6KL_DATA_OFFSET +
+		   sizeof(struct htc_packet) + ATH6KL_HTC_ALIGN_BYTES, 4);
 	skb = dev_alloc_skb(size + reserved);
 
 	if (skb)
@@ -1841,11 +1841,13 @@ static int __ath6kl_init_hw_start(struct ath6kl *ar)
 	 * size.
 	 */
 	if (ath6kl_htc_wait_target(ar->htc_target)) {
+		ath6kl_err("htc wait target failed: %d\n", ret);
 		ret = -EIO;
 		goto err_power_off;
 	}
 
 	if (ath6kl_init_service_ep(ar)) {
+		ath6kl_err("Endpoint service initilisation failed: %d\n", ret);
 		ret = -EIO;
 		goto err_cleanup_scatter;
 	}
